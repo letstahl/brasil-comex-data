@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.duckdb
+*.duckdb.wal
+.DS_Store
+
+# Dados grandes e artefatos reproduzíveis
+data/raw/**/*.csv
+data/raw/**/*.zip
+data/raw/**/*.xlsx
+data/staged/**/*.parquet
+data/mart/**/*.parquet
+data/mart/**/*.duckdb
+!data/**/.gitkeep
+
+# Segredos e credenciais
+.env
+*.pem
+
+*.egg-info/
