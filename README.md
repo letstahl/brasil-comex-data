@@ -1,14 +1,74 @@
 # Brasil Comércio Exterior Dados
 
-Pipeline e base analítica reutilizável para dados oficiais de comércio exterior do Brasil.
+Dados tratados e pipeline reprodutível para estatísticas oficiais de comércio exterior do Brasil.
 
-O projeto transforma os arquivos públicos do [Comex Stat/MDIC](https://comexstat.mdic.gov.br/pt/home) em dados estruturados para visualizações, dashboards, análises e jornalismo de dados. A proposta é evitar que cada projeto precise baixar os mesmos arquivos, consultar a API e repetir a limpeza.
+O projeto transforma os arquivos do [Comex Stat/MDIC](https://comexstat.mdic.gov.br/pt/home) em produtos prontos para visualizações, dashboards, análises e jornalismo de dados. A ideia é que outros projetos consultem os dados já organizados, sem repetir download, limpeza e tratamento.
 
-> Status: MVP funcional. O repositório já contém o pipeline, os testes e uma fixture pequena para reprodução. A publicação da série histórica tratada será adicionada em releases anuais.
+## Como usar em outro projeto
 
-## Uso rápido
+A camada de consumo é a `data/curated/`. Ela reúne tabelas pequenas e estáveis, pensadas para serem lidas diretamente por Python, R, DuckDB, Power BI, Tableau, Flourish ou Datawrapper.
 
-### 1. Instalação
+Os principais produtos são:
+
+```text
+data/curated/
+├── comercio_anual_pais.csv
+├── comercio_anual_pais.parquet
+├── comercio_mensal_pais.parquet
+├── ranking_parceiros.csv
+├── saldo_comercial_pais.csv
+└── catalog.json
+```
+
+### Python
+
+```python
+import pandas as pd
+
+url = (
+    "https://raw.githubusercontent.com/letstahl/brasil-comex-data/"
+    "main/data/curated/comercio_anual_pais.csv"
+)
+
+dados = pd.read_csv(url)
+exportacoes = dados[dados["fluxo"] == "EXP"]
+```
+
+### DuckDB
+
+```sql
+SELECT ano, nome_pais, valor_fob_usd
+FROM read_parquet(
+  'https://raw.githubusercontent.com/letstahl/brasil-comex-data/main/data/curated/comercio_anual_pais.parquet'
+)
+WHERE fluxo = 'EXP'
+ORDER BY ano, valor_fob_usd DESC;
+```
+
+### R
+
+```r
+library(readr)
+
+url <- paste0(
+  "https://raw.githubusercontent.com/letstahl/brasil-comex-data/",
+  "main/data/curated/comercio_anual_pais.csv"
+)
+
+dados <- read_csv(url)
+```
+
+O `catalog.json` informa a versão, o período coberto, a fonte, a data de atualização, as métricas e o checksum de cada produto.
+
+## O que cada produto representa
+
+`comercio_anual_pais` agrega exportações e importações por ano e país. `comercio_mensal_pais` mantém a dimensão mensal para análises de sazonalidade. `ranking_parceiros` separa o ranking de cada ano do valor acumulado. `saldo_comercial_pais` combina exportações e importações para calcular o saldo por parceiro.
+
+O ranking anual e o valor acumulado não respondem à mesma pergunta. O primeiro mostra quem liderou em determinado ano; o segundo mostra a soma dos valores até aquele ano.
+
+## Reproduzir o pipeline
+
+### Instalação
 
 ```bash
 git clone https://github.com/letstahl/brasil-comex-data.git
@@ -19,9 +79,9 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-### 2. Reproduzir o exemplo local
+### Teste rápido sem baixar a base oficial
 
-A fixture incluída permite executar o pipeline sem baixar a base oficial:
+A fixture incluída permite testar o fluxo completo em poucos segundos:
 
 ```bash
 pytest -q
@@ -35,15 +95,9 @@ python -m brasil_comex validate \
   --database /tmp/comex-demo/comex.duckdb
 ```
 
-A execução gera Parquet, DuckDB e os seguintes produtos analíticos:
+### Processar dados oficiais
 
-- `mart_comercio_anual_pais`: valor FOB e quilograma líquido por ano, fluxo e país;
-- `mart_ranking_parceiros`: ranking anual e valor acumulado, mantidos separados;
-- `fato_comex_ncm`: dados normalizados no grão original.
-
-### 3. Processar um ano oficial
-
-Os arquivos oficiais podem ser baixados e processados por ano:
+A ingestão pode ser executada por ano e por fluxo:
 
 ```bash
 python -m brasil_comex ingest --year 2023 --flows EXP IMP
@@ -51,26 +105,33 @@ python -m brasil_comex transform --input data/raw/year=2023 --output-dir data/ma
 python -m brasil_comex validate --database data/mart/comex.duckdb
 ```
 
-Os arquivos oficiais são grandes. O processamento completo deve ser feito com DuckDB ou em uma máquina com espaço suficiente; planilhas não são recomendadas.
+Os CSVs oficiais são grandes. Para cargas completas, o uso de DuckDB ou de um ambiente com espaço suficiente é recomendado; planilhas não são adequadas para essa etapa.
 
-## Dados e metodologia
+### Gerar a camada curada
 
-O MVP trabalha com a série a partir de 1997, quando a base passa a utilizar NCM/SISCOMEX. O período de 1989 a 1996 utiliza NBM e metodologia diferente, por isso permanece separado.
+O gerador reproduz a primeira publicação da camada de consumo. Por padrão, processa os anos de 2023 e 2024:
 
-A base detalhada mantém o grão publicado pelo MDIC: ano, mês, NCM, unidade estatística, país, UF, via e URF. A camada analítica agrega os registros por ano, fluxo e país.
+```bash
+python -m brasil_comex.build_curated \
+  --years 2023 2024 \
+  --output-dir data/curated
+```
 
-As principais métricas são:
+O [dicionário de dados](docs/data_dictionary.md) descreve as colunas, o grão e as métricas de cada produto. O `catalog.json` registra as fontes e os hashes dos arquivos usados na geração.
 
-- `VL_FOB`: valor FOB em dólares;
-- `KG_LIQUIDO`: peso líquido em quilogramas;
-- `QT_ESTAT`: quantidade estatística, sempre interpretada com a unidade da NCM.
+## Fonte e metodologia
 
-Exportações e importações não devem ser comparadas sem considerar a métrica usada. FOB, CIF, frete e seguro possuem significados diferentes. O ano mais recente pode estar parcial ou sujeito a revisões do MDIC.
+A série principal começa em 1997, quando a base passa a utilizar NCM/SISCOMEX. O período de 1989 a 1996 utiliza NBM e metodologia diferente, permanecendo separado.
 
-## Estrutura do repositório
+A base detalhada mantém o grão publicado pelo MDIC: ano, mês, NCM, unidade estatística, país, UF, via e URF. As métricas principais são `VL_FOB`, valor FOB em dólares, e `KG_LIQUIDO`, peso líquido em quilogramas. `QT_ESTAT` deve ser interpretada junto com a unidade estatística da NCM.
+
+FOB, CIF, frete e seguro possuem significados diferentes. O ano mais recente pode estar parcial ou sujeito a revisões da fonte.
+
+## Estrutura
 
 ```text
 config/                  URLs e parâmetros da fonte
+data/curated/            produtos prontos para consumo
 data/raw/                snapshots oficiais e manifestos
 data/reference/          tabelas auxiliares e arquivos de validação
 data/staged/             dados normalizados em Parquet
@@ -81,25 +142,25 @@ docs/                    arquitetura, metodologia e pesquisa
 .github/workflows/       CI do projeto
 ```
 
-Os arquivos brutos e os artefatos grandes não entram no histórico normal do Git. A ideia é publicar os produtos curados em releases anuais, com manifesto, checksum, período coberto e versão da fonte.
+Os arquivos brutos e os artefatos detalhados não entram no histórico normal do Git. Produtos curados pequenos podem ser publicados no repositório; arquivos maiores devem ser distribuídos por releases anuais, com manifesto, checksum e versão da fonte.
 
-## Atualização
+## Atualização anual
 
-A atualização prevista é anual. O fluxo recomendado é:
+A atualização ocorre quando uma nova versão anual da fonte é publicada:
 
 ```text
-novo arquivo do MDIC
+arquivo anual do MDIC
         ↓
 ingestão e manifesto
         ↓
 tratamento e validações
         ↓
-produtos curados
+produtos em data/curated/
         ↓
 release anual no GitHub
 ```
 
-Cada carga deve registrar a URL, o período, o fluxo, a data de captura, o tamanho e o hash SHA-256. Snapshots antigos não devem ser sobrescritos sem uma nova versão.
+Cada versão registra URL, período, fluxo, data de captura, tamanho, hash SHA-256 e status da fonte. Snapshots antigos não devem ser sobrescritos.
 
 ## Limitações
 
@@ -107,9 +168,9 @@ Os dados são estatísticas agregadas de comércio exterior de bens. Não são m
 
 No módulo municipal, o município representa o domicílio fiscal do declarante. Isso não significa necessariamente local de produção, origem física ou desembarque da mercadoria.
 
-Mudanças de classificação, descrições, unidades e revisões da fonte podem afetar comparações históricas. Códigos e tabelas auxiliares oficiais devem ser preservados junto com cada versão do dataset.
+Mudanças de classificação, descrições, unidades e revisões podem afetar comparações históricas. Códigos e tabelas auxiliares oficiais devem ser preservados junto com cada versão.
 
-## Fontes e referências
+## Fontes
 
 - [Base de dados bruta do MDIC](https://www.gov.br/mdic/pt-br/assuntos/comercio-exterior/estatisticas/base-de-dados-bruta)
 - [Documentação da API Comex Stat](https://api-comexstat.mdic.gov.br/docs/)

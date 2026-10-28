@@ -1,0 +1,69 @@
+{
+  "dataset": "Brasil Comércio Exterior Dados",
+  "version": "2024.1",
+  "source": "MDIC/SECEX Comex Stat",
+  "source_url": "https://www.gov.br/mdic/pt-br/assuntos/comercio-exterior/estatisticas/base-de-dados-bruta",
+  "period_start": 2023,
+  "period_end": 2024,
+  "years": [
+    2023,
+    2024
+  ],
+  "flows": [
+    "EXP",
+    "IMP"
+  ],
+  "grain": "ano, fluxo e país para comércio_anual_pais; ano, mês, fluxo e país para comércio_mensal_pais",
+  "metrics": [
+    "valor_fob_usd",
+    "kg_liquido",
+    "participacao"
+  ],
+  "updated_at_utc": "2026-10-28T13:34:34.641945+00:00",
+  "source_files": [
+    {
+      "url": "https://balanca.mdic.gov.br/balanca/bd/tabelas/TABELAS_AUXILIARES.xlsx",
+      "file": "TABELAS_AUXILIARES.xlsx",
+      "bytes": 5577845,
+      "sha256": "5f30a35a6b809fd79e4788c70377e48e71136982815887ee5882e06ea6448110"
+    },
+    {
+      "url": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_2023.csv",
+      "file": "EXP_2023.csv",
+      "bytes": 103932897,
+      "sha256": "3bfaeb2751ded80c4387ad2d4964f8fb7e4529c45810777d77a48a466e9c6b36",
+      "year": 2023,
+      "flow": "EXP"
+    },
+    {
+      "url": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/IMP_2023.csv",
+      "file": "IMP_2023.csv",
+      "bytes": 152969373,
+      "sha256": "9b33eb6151390d50516e490b2b02d639f75af90c37baac15fa2f92a149b497bc",
+      "year": 2023,
+      "flow": "IMP"
+    },
+    {
+      "url": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/EXP_2024.csv",
+      "file": "EXP_2024.csv",
+      "bytes": 106702953,
+      "sha256": "9dcddfcb2089709c6e738f4a7fd1e529e66f1ceae8c66dcc1550884277548b78",
+      "year": 2024,
+      "flow": "EXP"
+    },
+    {
+      "url": "https://balanca.mdic.gov.br/balanca/bd/comexstat-bd/ncm/IMP_2024.csv",
+      "file": "IMP_2024.csv",
+      "bytes": 166729221,
+      "sha256": "d0e7cce0b93d2a6d80f8bf7cf898264dba8144f25679ff0a5fa669a3cdc505e0",
+      "year": 2024,
+      "flow": "IMP"
+    }
+  ],
+  "notes": [
+    "A camada inicial cobre 2023 e 2024.",
+    "Os valores são estatísticas agregadas de bens.",
+    "O ano mais recente pode estar sujeito a revisões da fonte.",
+    "A API não foi usada nesta carga; os arquivos anuais abertos foram processados diretamente."
+  ]
+}
