@@ -1,23 +1,48 @@
-# Arquitetura
+# Arquitetura do projeto
 
-## Decisão
+## Objetivo
 
-O projeto adota uma arquitetura local-first em três camadas. `raw` preserva o arquivo oficial sem edição; `staged` normaliza tipos e mantém o grão original; `mart` publica produtos analíticos para consumo. A escolha reduz dependência de ferramentas pagas e permite executar o mesmo pipeline em laptop, CI ou depois em armazenamento de objetos.
+O projeto separa a obtenção dos dados, o tratamento e o consumo analítico. Essa separação permite atualizar a fonte sem refazer manualmente as análises e facilita o uso dos produtos em notebooks, dashboards e reportagens.
 
-## Grão e modelos
+## Camadas
 
-A fonte detalhada do MDIC é uma linha por ano, mês, NCM, unidade estatística, país, UF do produto, via e URF. Exportação possui `VL_FOB`, `KG_LIQUIDO` e `QT_ESTAT`; importação acrescenta frete e seguro. O MVP mantém essas colunas e adiciona `fluxo`.
+### Raw
 
-O primeiro mart agrega por `ano`, `fluxo` e `codigo_pais`, calculando valor FOB, quilograma líquido e quantidade de linhas. O ranking anual e o valor acumulado são colunas distintas: o primeiro responde “quem liderou naquele ano?”; o segundo responde “qual foi o total corrente até aquele ano?”.
+A camada `raw` guarda os arquivos oficiais sem edição. Cada carga recebe um manifesto com URL, ano, fluxo, data de captura, tamanho e hash SHA-256.
+
+### Staged
+
+A camada `staged` padroniza os tipos, preserva os códigos como texto e mantém o grão original do Comex Stat. Essa etapa não deve substituir códigos nem descrições históricas por valores digitados manualmente.
+
+### Mart
+
+A camada `mart` reúne as tabelas destinadas ao consumo. O primeiro produto agrega os dados por ano, fluxo e país, calculando valor FOB, quilograma líquido e número de linhas de origem. O ranking anual e o valor acumulado aparecem em campos diferentes para evitar interpretações equivocadas.
+
+## Grão dos dados
+
+A base detalhada do MDIC contém ano, mês, NCM, unidade estatística, país, UF, via e URF. A exportação possui valor FOB, quilograma líquido e quantidade estatística; a importação também pode conter frete e seguro.
+
+A base municipal deve ser tratada como um domínio separado. O município representa o domicílio fiscal do declarante e não necessariamente o local de produção ou de embarque.
+
+## Reprodução
+
+A reprodução local pode ser feita com a fixture incluída:
+
+```bash
+pytest -q
+python -m brasil_comex transform --input tests/fixtures --output-dir /tmp/comex-demo
+python -m brasil_comex validate --database /tmp/comex-demo/comex.duckdb
+```
+
+Para uma carga oficial, o pipeline baixa um ano específico:
+
+```bash
+python -m brasil_comex ingest --year 2023 --flows EXP IMP
+python -m brasil_comex transform --input data/raw/year=2023 --output-dir data/mart
+```
 
 ## Atualização
 
-A carga histórica deve ser feita uma vez. Em seguida, reprocessa-se o último ano disponível conforme a divulgação mensal e o ano anterior após a revisão anual. Cada download gera manifesto com URL, timestamp, tamanho e SHA-256. Snapshots não devem ser sobrescritos sem nova versão.
+A atualização prevista é anual. Uma nova versão deve baixar o arquivo do ano, preservar o snapshot, executar as validações, gerar os produtos curados e publicar uma release com manifesto e checksum.
 
-## Validações
-
-A qualidade mínima inclui contrato de colunas, códigos como texto, meses entre 1 e 12, chaves não nulas, medidas não negativas e reconciliação com os arquivos de totais de conferência do MDIC. Na evolução do projeto, adicionar tabelas auxiliares de país/NCM/unidades, freshness e testes de distribuição.
-
-## Extensões
-
-A segunda etapa pode adicionar dbt para lineage e documentação, domínio municipal separado e um notebook que exporte o formato largo necessário para Flourish ou outra ferramenta de bar chart race. A série 1989–1996 deve continuar isolada, pois usa NBM e metodologia distinta.
+A série de 1989 a 1996 permanece fora do primeiro produto comparável porque usa NBM e metodologia diferente da série iniciada em 1997.

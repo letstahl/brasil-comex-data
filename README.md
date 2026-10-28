@@ -1,103 +1,123 @@
 # Brasil Comércio Exterior Dados
 
-Pipeline reprodutível para transformar os dados públicos oficiais do MDIC/SECEX (Comex Stat) em datasets analíticos prontos para uso: Parquet, DuckDB e tabelas agregadas por país/ano para análises, dashboards e bar chart race.
+Pipeline e base analítica reutilizável para dados oficiais de comércio exterior do Brasil.
 
-> Projeto de portfólio: o código é executável localmente, mas os CSVs oficiais não são versionados no Git por causa do tamanho. Cada carga registra URL, período, fluxo, hash SHA-256, tamanho e data de captura.
+O projeto transforma os arquivos públicos do [Comex Stat/MDIC](https://comexstat.mdic.gov.br/pt/home) em dados estruturados para visualizações, dashboards, análises e jornalismo de dados. A proposta é evitar que cada projeto precise baixar os mesmos arquivos, consultar a API e repetir a limpeza.
 
-## **O que este MVP entrega**
+> Status: MVP funcional. O repositório já contém o pipeline, os testes e uma fixture pequena para reprodução. A publicação da série histórica tratada será adicionada em releases anuais.
 
-- Download configurável dos CSVs anuais oficiais de exportação/importação.
+## Uso rápido
 
-- Preservação da origem em `data/raw/` e manifesto de ingestão.
-
-- Normalização tipada para Parquet, mantendo códigos como texto.
-
-- Banco DuckDB local para consultas analíticas.
-
-- `mart_comercio_anual_pais`: valor FOB e kg líquido por ano, fluxo e país.
-
-- `mart_ranking_parceiros`: ranking anual e valor acumulado, separados para não confundir os conceitos.
-
-- Testes unitários e de qualidade com fixture pequena.
-
-- CI no GitHub Actions.
-
-## Fonte e escopo metodológico
-
-A fonte canônica é o [Comex Stat/MDIC](https://comexstat.mdic.gov.br/pt/home). Para grandes volumes, este projeto usa os arquivos abertos anuais; a [API oficial](https://api-comexstat.mdic.gov.br/docs/) fica reservada para consultas pequenas e validações. O MVP começa em 1997, quando a série passa a usar NCM/SISCOMEX. O período histórico 1989–1996 usa NBM e metodologia distinta, portanto fica fora do primeiro produto comparável.
-
-O fato detalhado mantém o grão oficial: ano, mês, NCM, unidade, país, UF, via e URF. Os marts de parceiros agregam por ano, fluxo e país. `VL_FOB` é valor em dólares no local de embarque; `KG_LIQUIDO` é peso líquido. O ano corrente pode ser parcial/preliminar e revisões do MDIC podem alterar períodos recentes.
-
-## Início rápido
+### 1. Instalação
 
 ```bash
+git clone https://github.com/letstahl/brasil-comex-data.git
+cd brasil-comex-data
+
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-
-# Baixa e processa um ano (arquivos podem ser grandes)
-python -m brasil_comex ingest --year 2023 --flows EXP IMP
-python -m brasil_comex transform --year 2023
-python -m brasil_comex validate --year 2023
 ```
 
-Para testar sem baixar dados oficiais:
+### 2. Reproduzir o exemplo local
+
+A fixture incluída permite executar o pipeline sem baixar a base oficial:
 
 ```bash
 pytest -q
-python -m brasil_comex transform --input tests/fixtures --output-dir /tmp/comex-demo
+ruff check src tests
+
+python -m brasil_comex transform \
+  --input tests/fixtures \
+  --output-dir /tmp/comex-demo
+
+python -m brasil_comex validate \
+  --database /tmp/comex-demo/comex.duckdb
 ```
 
-## Estrutura
+A execução gera Parquet, DuckDB e os seguintes produtos analíticos:
 
+- `mart_comercio_anual_pais`: valor FOB e quilograma líquido por ano, fluxo e país;
+- `mart_ranking_parceiros`: ranking anual e valor acumulado, mantidos separados;
+- `fato_comex_ncm`: dados normalizados no grão original.
+
+### 3. Processar um ano oficial
+
+Os arquivos oficiais podem ser baixados e processados por ano:
+
+```bash
+python -m brasil_comex ingest --year 2023 --flows EXP IMP
+python -m brasil_comex transform --input data/raw/year=2023 --output-dir data/mart
+python -m brasil_comex validate --database data/mart/comex.duckdb
 ```
-config/                  parâmetros e URLs da fonte
-data/raw/                snapshots originais + manifestos (não versionar no Git)
-data/reference/          tabelas auxiliares e totais oficiais do MDIC
-data/staged/             Parquet normalizado
-data/mart/               DuckDB/Parquet agregados para consumo
+
+Os arquivos oficiais são grandes. O processamento completo deve ser feito com DuckDB ou em uma máquina com espaço suficiente; planilhas não são recomendadas.
+
+## Dados e metodologia
+
+O MVP trabalha com a série a partir de 1997, quando a base passa a utilizar NCM/SISCOMEX. O período de 1989 a 1996 utiliza NBM e metodologia diferente, por isso permanece separado.
+
+A base detalhada mantém o grão publicado pelo MDIC: ano, mês, NCM, unidade estatística, país, UF, via e URF. A camada analítica agrega os registros por ano, fluxo e país.
+
+As principais métricas são:
+
+- `VL_FOB`: valor FOB em dólares;
+- `KG_LIQUIDO`: peso líquido em quilogramas;
+- `QT_ESTAT`: quantidade estatística, sempre interpretada com a unidade da NCM.
+
+Exportações e importações não devem ser comparadas sem considerar a métrica usada. FOB, CIF, frete e seguro possuem significados diferentes. O ano mais recente pode estar parcial ou sujeito a revisões do MDIC.
+
+## Estrutura do repositório
+
+```text
+config/                  URLs e parâmetros da fonte
+data/raw/                snapshots oficiais e manifestos
+data/reference/          tabelas auxiliares e arquivos de validação
+data/staged/             dados normalizados em Parquet
+data/mart/               DuckDB e produtos analíticos
 src/brasil_comex/        ingestão, transformação e validação
 tests/                   testes e fixtures pequenas
-docs/                    arquitetura, pesquisa e decisões metodológicas
-.github/workflows/       CI
+docs/                    arquitetura, metodologia e pesquisa
+.github/workflows/       CI do projeto
 ```
 
-## Atualização recomendada
+Os arquivos brutos e os artefatos grandes não entram no histórico normal do Git. A ideia é publicar os produtos curados em releases anuais, com manifesto, checksum, período coberto e versão da fonte.
 
-Faça a carga histórica uma vez. Depois, reprocessar o último ano disponível mensalmente; após a revisão anual, reprocessar o ano anterior. Nunca sobrescreva um snapshot sem registrar nova versão: a fonte pode ser revisada.
+## Atualização
 
-## Publicação
+A atualização prevista é anual. O fluxo recomendado é:
 
-- **GitHub:** código, schemas, documentação, manifestos, testes e releases tagueadas.
+```text
+novo arquivo do MDIC
+        ↓
+ingestão e manifesto
+        ↓
+tratamento e validações
+        ↓
+produtos curados
+        ↓
+release anual no GitHub
+```
 
-- **GitHub Releases ou armazenamento de objetos:** Parquet/DuckDB derivados grandes, com checksum e contagem de linhas.
+Cada carga deve registrar a URL, o período, o fluxo, a data de captura, o tamanho e o hash SHA-256. Snapshots antigos não devem ser sobrescritos sem uma nova versão.
 
-- **Kaggle:** cópia secundária para notebooks e exploração, sempre apontando de volta para este repositório e para o MDIC.
+## Limitações
 
-- **Catálogo DCAT/CKAN:** metadados, cobertura, periodicidade, licença, `accessURL` e `downloadURL`.
+Os dados são estatísticas agregadas de comércio exterior de bens. Não são microdados de empresas e não permitem identificar empresas, CNPJ ou transações individuais.
 
-Não coloque CSVs brutos grandes no histórico Git. Verifique a licença do arquivo exato antes de redistribuir dados; a licença do código deste projeto não licencia automaticamente os dados do MDIC.
+No módulo municipal, o município representa o domicílio fiscal do declarante. Isso não significa necessariamente local de produção, origem física ou desembarque da mercadoria.
 
-## Limitações importantes
+Mudanças de classificação, descrições, unidades e revisões da fonte podem afetar comparações históricas. Códigos e tabelas auxiliares oficiais devem ser preservados junto com cada versão do dataset.
 
-- Os dados são estatísticas agregadas de bens, não microdados de empresas.
-
-- Município no módulo municipal representa o domicílio fiscal do declarante, não necessariamente origem física ou local de produção.
-
-- FOB, CIF, frete e seguro são medidas diferentes; não misture sem nota metodológica.
-
-- NCM e descrições têm vigência. Mantenha códigos e tabelas de correlação oficiais.
-
-- Uma corrida de barras é narrativa exploratória. Publique também tabela, série estática, participação e variação.
-
-## Referências
+## Fontes e referências
 
 - [Base de dados bruta do MDIC](https://www.gov.br/mdic/pt-br/assuntos/comercio-exterior/estatisticas/base-de-dados-bruta)
-
+- [Documentação da API Comex Stat](https://api-comexstat.mdic.gov.br/docs/)
 - [Perguntas frequentes do Comex Stat](https://www.gov.br/mdic/pt-br/assuntos/comercio-exterior/estatisticas/perguntas-frequentes-faq)
-
 - [DuckDB e Parquet](https://duckdb.org/docs/2.0/data/parquet/overview.html)
-
 - [Princípios FAIR](https://doi.org/10.1038/sdata.2016.18)
-
 - [Reprodutibilidade computacional](https://doi.org/10.1371/journal.pcbi.1003285)
+
+## Licença
+
+O código está disponível sob a licença MIT. Os dados do MDIC possuem fonte e regras próprias de uso; a licença do código não substitui a verificação dos direitos aplicáveis a cada arquivo distribuído.
